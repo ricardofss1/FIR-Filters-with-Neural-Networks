@@ -41,7 +41,7 @@ def train_param_regression(npz_path,
                            device=None):
     """
     Treina ParamNet para regressão de parâmetros FIR.
-    Agora com 6 saídas: fc, trans, Rp, As, order, type.
+    com 6 saídas: fc, trans, Rp, As, order, type.
     """
     torch.manual_seed(seed); np.random.seed(seed)
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -60,7 +60,7 @@ def train_param_regression(npz_path,
     val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False, num_workers=2)
     test_loader  = DataLoader(test_ds,  batch_size=batch_size, shuffle=False, num_workers=2)
 
-    # Modelo atualizado para 6 entradas/saídas
+    # Modelo para 6 entradas/saídas
     model = ParamNet(in_dim=6, hidden=hidden, dropout=dropout).to(device)
     opt = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
     sched = optim.lr_scheduler.ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=5)

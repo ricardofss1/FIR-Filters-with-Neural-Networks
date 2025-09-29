@@ -18,12 +18,14 @@ def design_filter(fc_hz, trans_hz, Rp, As, order, fs, ftype="lowpass", method="f
     """Projeto de filtro FIR usando métodos clássicos em Hz"""
     try:
         if method == "firwin":
-            # 🔧 Ajuste: highpass precisa de número ímpar
+            # highpass precisa de número ímpar
             if ftype == "highpass" and order % 2 == 0:
                 order += 1
             taps = signal.firwin(
                 order,
                 cutoff=fc_hz,
+                # window=("hamming"),
+                # window=("hanning"),
                 window=("kaiser", compute_beta(As)),
                 fs=fs,
                 pass_zero=(ftype == "lowpass")
@@ -82,7 +84,6 @@ def plot_comprehensive_comparison(h_pred, h_design, specs, fs, n_fft=2048):
     H_pred_db = 20 * np.log10(np.maximum(np.abs(H_pred), 1e-10))
     H_des_db = 20 * np.log10(np.maximum(np.abs(H_des), 1e-10))
     
-    # 1. Magnitude
     axes[0,0].plot(w, H_des_db, label="Scipy (design direto)", linewidth=2)
     axes[0,0].plot(w, H_pred_db, "--", label="Predição híbrida", alpha=0.8)
     axes[0,0].set_title("Resposta em Magnitude")
@@ -91,7 +92,6 @@ def plot_comprehensive_comparison(h_pred, h_design, specs, fs, n_fft=2048):
     axes[0,0].legend()
     axes[0,0].grid(True, alpha=0.3)
 
-    # 2. Fase
     phase_pred = np.unwrap(np.angle(H_pred))
     phase_des = np.unwrap(np.angle(H_des))
     axes[0,1].plot(w, phase_des, "--", label="Scipy")
@@ -102,7 +102,6 @@ def plot_comprehensive_comparison(h_pred, h_design, specs, fs, n_fft=2048):
     axes[0,1].legend()
     axes[0,1].grid(True, alpha=0.3)
 
-    # 3. Coeficientes
     axes[1,0].stem(h_design, linefmt="C0-", markerfmt="C0o", basefmt="k-", label="Scipy")
     axes[1,0].stem(h_pred, linefmt="C1--", markerfmt="C1x", basefmt="k-", label="Predição")
     axes[1,0].set_title("Coeficientes FIR")
@@ -192,7 +191,7 @@ def main():
     parser.add_argument("--interactive", action="store_true", help="Entrar em modo interativo (solicitar parâmetros)")
     args = parser.parse_args()
     """
-    # 🔹 Se o usuário escolheu modo interativo
+    # Se o usuário escolheu modo interativo
     if not args.interactive:
         print("\n=== MODO INTERATIVO: Projeto de Filtro FIR ===\n")
         ftype = input("Tipo de filtro [lowpass/highpass]: ") or "lowpass"
@@ -244,7 +243,7 @@ def main():
         filename = f"fir_coeffs_fc{args.fc}hz_fs{args.fs}hz_order{args.order}.{args.export}"
         export_coefficients(h_pred, filename, args.export)
     
-    # Visualização (CORRIGIDO: adicionado args.fs)
+    # Visualização
     if not args.no_plot:
         specs = {
             'fc': args.fc, 'trans': args.trans,
