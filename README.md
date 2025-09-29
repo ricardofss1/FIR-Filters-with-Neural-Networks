@@ -57,7 +57,7 @@ We use dataset_generator.py to create thousands of FIR filters (lowpass and high
 
 Each filter is designed using SciPy (remez or firwin) and stored in a dataset (fir_dataset.npz).
 
-### 🧠 Neural Network Training (Param
+### 🧠 Neural Network Training (ParamNet)
 
 ParamNet is an MLP (multi-layer perceptron) that learns to map specifications → normalized parameters.
 
@@ -94,15 +94,9 @@ Plots include:
 
 - FIR coefficients.
 
-flowchart TD
-    A[Dataset Generator] -->|Gera specs + coeficientes| B[Dataset .npz]
-    B --> C[ParamDataset - PyTorch]
-    C --> D[ParamNet - MLP Neural Network]
-    D --> E[Training Loop]
-    E -->|Modelo treinado| F[best_paramnet.pth]
-    F --> G[Hybrid Predict]
-    G -->|Coeficientes FIR| H[Aplicações reais]
+## Workflow
 
+<img src="Workflow.png" alt="Workflow" width="300"/>
 
 ## 🖥️ Usage
 🔹 Train the network
