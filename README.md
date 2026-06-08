@@ -1,136 +1,192 @@
-# **FIR Filters with Neural Networks**
-This project explores how artificial neural networks can assist in the automatic design of FIR (Finite Impulse Response) filters, combining classical Digital Signal Processing (DSP) techniques with Machine Learning.
+# FIR Filters with Neural Networks
 
-The idea is simple:
+This project explores a hybrid workflow for FIR filter design:
 
-- The user provides specifications (cutoff frequency, ripple, attenuation, etc.).
+1. The user provides filter specifications.
+2. A neural network predicts adjusted parameters.
+3. SciPy synthesizes the final FIR coefficients from those predicted parameters.
 
-- The neural network intelligently adjusts these specifications.
+That combination keeps the model useful as a learned assistant while still relying on a classical DSP method to produce valid coefficients.
 
-- The filter is synthesized (via SciPy) with optimized coefficients.
+## What is in the repository
 
-This makes the project useful both for learning DSP concepts and for real-world applications, such as real-time audio filtering.
+- `dataset_generator.py`: generates synthetic lowpass and highpass FIR requests, optional adjusted targets, and coefficients.
+- `hybrid_dataset.py`: loads the `.npz` dataset for PyTorch.
+- `hybrid_model.py`: defines `ParamNet`.
+- `hybrid_train.py`: training loop and checkpoint saving.
+- `hybrid_predict.py`: loads the model and performs hybrid inference.
+- `hybrid_helpers.py`: parameter encoding/decoding and FIR synthesis glue.
+- `fir_utils.py`: shared FIR design, metrics, export helpers, and Hz normalization.
+- `main_train.py`: command-line training entry point.
+- `main_predict.py`: normalized-frequency inference and comparison.
+- `main_predict_.py`: inference in Hz, with optional interactive mode.
+- `predict_real_fir.py`: real-world oriented inference with ripple/attenuation reporting.
+- `evaluate_model.py`: consolidated checkpoint evaluation on the full test split with JSON report output.
+- `streamlit_app.py`: accessible web interface for designing, comparing, and exporting FIR filters.
+- `exemplo_hybrid_run.py`: minimal example using the current 6-feature request format.
 
-## Motivation
+## Reproducible setup
 
-Designing FIR filters manually can be tedious:
+Do not rely on the committed `myenv/` directory. It points to a machine-specific Python path and is not portable.
 
-- Small adjustments in filter order or attenuation are often required to meet the constraints.
+Create a fresh environment instead:
 
-- Classical tools (remez, firwin) don’t always perfectly hit the desired specifications.
-
-👉 The neural network works like an “automatic engineer”: it takes your request and slightly adjusts the parameters so the final filter truly meets practical requirements.
-
-
-
-## Project Structure
-
-```
-📂 Project/
-│── dataset_generator.py # Generate dataset with lowpass/highpass filters
-│── hybrid_dataset.py # PyTorch Dataset class
-│── hybrid_helpers.py # Utility functions (normalization, FIR synthesis, etc.)
-│── hybrid_model.py # ParamNet neural network definition
-│── hybrid_train.py # Training loop (PyTorch)
-│── hybrid_predict.py # Inference functions (using trained model)
-│── main_train.py # Training script (command line)
-│── main_predict.py # Prediction and visualization script
-│── checkpoints_hybrid/ # Folder for saving checkpoints
-│ └── best_paramnet.pth # Trained model file
-│── README.md # This file :)
+```bash
+python -m venv .venv
 ```
 
+Activate it on PowerShell:
 
-### 📊 Dataset Generation
+```bash
+.\.venv\Scripts\Activate.ps1
+```
 
-We use dataset_generator.py to create thousands of FIR filters (lowpass and highpass) with random parameters:
+Install dependencies:
 
-- Cutoff frequency (fc)
+```bash
+python -m pip install -r requirements.txt
+```
 
-- Transition bandwidth (trans)
+## Dataset generation
 
-- Passband ripple (Rp)
+Generate a broad-coverage dataset with the same request format expected by the current model:
 
-- Stopband attenuation (As)
+```bash
+python dataset_generator.py --n-samples 50000 --nmax 256 --out fir_dataset_adjusted_firwin_v2.npz --method firwin --seed 0 --search-candidates 8 --profile broad
+```
 
-- Number of taps (order)
+Generate a hard-focused companion dataset that emphasizes narrow transitions, high attenuation, tighter order budgets, and edge-frequency cases:
 
-Each filter is designed using SciPy (remez or firwin) and stored in a dataset (fir_dataset.npz).
+```bash
+python dataset_generator.py --n-samples 15000 --nmax 256 --out fir_dataset_hard_focused_firwin_v1.npz --method firwin --seed 1 --search-candidates 24 --profile hard
+```
 
-### 🧠 Neural Network Training (ParamNet)
+Useful options:
 
-ParamNet is an MLP (multi-layer perceptron) that learns to map specifications → normalized parameters.
+- `--min-order` / `--max-order`: control the tap range sampled into the dataset.
+- `--min-fc` / `--max-fc`: control the normalized cutoff range.
+- `--min-trans` / `--max-trans`: control the normalized transition-width range.
+- `--method`: choose the primary synthesis method used during dataset generation.
+- `--search-candidates`: search for adjusted target parameters that better satisfy the requested specs.
+- `--profile`: choose between `broad` coverage and the `hard` / `hard-focused` profile.
+- `--seed`: make the sampled dataset reproducible.
 
-Training is performed with MSE (Mean Squared Error) in the standardized space (hybrid_train.py).
+The repository now includes `fir_dataset_adjusted_firwin_v2.npz`, which is the current recommended training set:
 
-The best model is saved in: 
+- it uses `firwin`, matching the default inference path
+- it contains large-scale adjusted targets generated with `--search-candidates`
+- it includes extra low-frequency coverage for real-frequency cases such as `700 Hz @ 44.1 kHz`
+- the generator now performs a two-phase search: broad exploration followed by local refinement
+- the generator also stores per-sample difficulty weights for the training loop
+
+## Training
+
+Train `ParamNet` from a dataset file:
+
+```bash
+python main_train.py --dataset fir_dataset_adjusted_firwin_v2.npz --epochs 50 --batch_size 128 --num_workers 0
+```
+
+Difficulty weighting is applied automatically when the dataset contains the `difficulty` field.
+
+The best checkpoint is saved to:
+
 ```bash
 checkpoints_hybrid/best_paramnet.pth
 ```
 
-### Hybrid Prediction
+The checkpoint now stores input/target scalers and model architecture metadata needed to reload it consistently.
 
-Given filter specifications, the network predicts the natural parameters.
+## Inference
 
-These parameters are passed to the synthesize_fir function, which uses SciPy (remez or firwin) to generate the FIR coefficients.
+### Normalized frequency mode
 
-This ensures the final filter is always valid.
+Use normalized frequencies in the same convention as the dataset (`fs = 1.0`, Nyquist at `0.5`):
 
-### Evaluation
-
-The script main_predict.py compares the predicted filter (hybrid NN + SciPy) with the directly designed filter (SciPy only).
-
-Metrics used:
-
-- Mean Absolute Error (MAE) in dB between frequency responses.
-
-- Correlation between FIR coefficients.
-
-Plots include:
-
-- Frequency response (dB).
-
-- Phase response.
-
-- FIR coefficients.
-
-## Workflow
-
-<img src="Workflow.png" alt="Workflow" width="300"/>
-
-## 🖥️ Usage
-🔹 Train the network
-```bash
-python main_train.py --dataset fir_dataset.npz --epochs 50 --batch_size 128
-```
-🔹 Predict a filter (normalized mode)
 ```bash
 python main_predict.py --fc 0.25 --trans 0.05 --Rp 1 --As 60 --order 128 --type lowpass --method firwin
 ```
-🔹 Predict a filter (Hz, interactive mode)
+
+### Hz mode
+
+Use real frequencies directly:
+
+```bash
+python main_predict_.py --fs 16000 --fc 700 --trans 200 --Rp 1 --As 40 --order 128 --type highpass
+```
+
+Interactive mode:
+
 ```bash
 python main_predict_.py --interactive
 ```
-🔹 Export coefficients]
+
+### Real-world reporting mode
+
+This script reports both comparison metrics and band metrics such as ripple and stopband attenuation:
+
 ```bash
-python main_predict.py --fc 0.25 --trans 0.05 --Rp 1 --As 60 --order 128 --type highpass --export c
+python predict_real_fir.py --fs 44100 --fc 700 --trans 200 --Rp 1 --As 60 --order 128 --type lowpass
 ```
-## ✅ Conclusion
 
-This project demonstrates that:
+## Streamlit interface
 
-- Neural networks can learn the behavior of classical DSP tools.
+To open the accessible web interface locally:
 
-- The model acts as an automatic engineer, fine-tuning specifications for practical results.
+```bash
+python -m streamlit run streamlit_app.py
+```
 
-- FIR filter theory + AI can be combined in a practical and didactic way.
+The app includes:
 
-🚀 Next steps:
+- presets for common use cases
+- input in Hz instead of normalized frequency
+- interactive Plotly charts with zoom, pan, hover, and clickable legends
+- comparison between predicted and direct SciPy design
+- tabs for magnitude, phase, group delay, impulse response, and specification error
+- visualization controls for scale, axis limits, visible curves, and frequency resolution
+- figure export in `HTML`, `PNG`, and `SVG`
+- CSV export for frequency response, group delay, impulse response, and metrics
+- coefficient export in `txt`, `Python`, `C`, and `MATLAB`
+- simple explanations of ripple, attenuation, and the internal score
 
-- Extend to bandpass / bandstop filters.
+## Full evaluation
 
-- Optimize for real-time embedded systems.
+To evaluate a checkpoint on the entire test split and generate a consolidated report:
 
-- Build an interactive GUI for education.
+```bash
+python evaluate_model.py --json-out evaluation_report.json
+```
 
-📌 Developed for the PDS course.
+The script reports:
+
+- regression loss and parameter MAE on the test split
+- similarity versus the dataset target filter
+- similarity versus the direct design from the request
+- ripple/attenuation statistics for predicted, target, and direct filters
+- request-satisfaction score statistics and improvement over direct design
+
+## Metrics
+
+The comparison scripts now align their masks with the filter type:
+
+- `lowpass`: passband up to `fc`, stopband after `fc + trans`
+- `highpass`: stopband before `fc - trans`, passband from `fc`
+
+Reported metrics include:
+
+- `mae_passband`
+- `mae_stopband`
+- `correlation`
+- `erle`
+
+`predict_real_fir.py` also reports ripple and stopband attenuation for the predicted and reference filters.
+
+## Notes
+
+- The model input format is `[fc, trans, Rp, As, order, type]`.
+- The model predicts the 5 adjustable parameters `[fc, trans, Rp, As, order]` and preserves `type` from the request.
+- Internally, `order` now uses a dedicated head while the other continuous parameters share a separate regression head.
+- `type = 0` means `lowpass`, `type = 1` means `highpass`.
+- `fir_dataset_adjusted_firwin_v2.npz` extends the supported normalized range down to `fc=0.005` and `trans=0.002`.
+- Highpass designs created with `firwin` may use one extra tap when an odd length is required by the underlying FIR type.

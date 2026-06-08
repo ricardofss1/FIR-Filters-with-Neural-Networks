@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+
+.venv/
+venv/
+myenv/
+
+checkpoints/
+checkpoints_hybrid/
+
+*.txt
+*.matlab
+*.python
+*.c
